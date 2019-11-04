@@ -10,6 +10,7 @@ import math
 import numpy as np
 
 MINOVERLAP = 0.5 # default value (defined in the PASCAL VOC2012 challenge)
+CONF_THRES = 0.5
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-na', '--no-animation', help="no animation is shown.", action="store_true")
@@ -490,6 +491,30 @@ for class_index, class_name in enumerate(gt_classes):
     with open(TEMP_FILES_PATH + "/" + class_name + "_dr.json", 'w') as outfile:
         json.dump(bounding_boxes, outfile)
 
+
+#计算confidence阈值为thres时的precision和recall值
+def cal_prec_rec_with_thres(dr_data,tp_bitmap, fp_bitmap, gt_num, thres):
+    tp = 0
+    fp = 0
+
+    for i,detection in enumerate(dr_data):
+        if float(detection['confidence']) >= thres:
+            tp += tp_bitmap[i]
+            fp += fp_bitmap[i]
+
+    if tp+fp == 0:
+        precision = 0
+    else:
+        precision = float(tp) / (tp + fp)
+
+    if gt_num == 0:
+        recall = 0
+    else:
+        recall = float(tp) / gt_num
+
+    return precision, recall
+
+
 """
  Calculate the AP for each class
 """
@@ -514,6 +539,8 @@ with open(results_files_path + "/results.txt", 'w') as results_file:
         nd = len(dr_data)
         tp = [0] * nd # creates an array of zeros of size nd
         fp = [0] * nd
+        dr_data_filtered = []
+
         for idx, detection in enumerate(dr_data):
             file_id = detection["file_id"]
             if show_animation:
@@ -649,6 +676,7 @@ with open(results_files_path + "/results.txt", 'w') as results_file:
                 # save the image with all the objects drawn to it
                 cv2.imwrite(img_cumulative_path, img_cumulative)
 
+        precision,recall = cal_prec_rec_with_thres(dr_data,tp,fp,gt_counter_per_class[class_name],CONF_THRES)
         #print(tp)
         # compute precision/recall
         cumsum = 0
@@ -667,9 +695,10 @@ with open(results_files_path + "/results.txt", 'w') as results_file:
         prec = tp[:]
         for idx, val in enumerate(tp):
             prec[idx] = float(tp[idx]) / (fp[idx] + tp[idx])
-        #print(prec)
+        print(prec)
 
         ap, mrec, mprec = voc_ap(rec[:], prec[:])
+        print(mprec)
         sum_AP += ap
         text = "{0:.2f}%".format(ap*100) + " = " + class_name + " AP " #class_name + " AP = {0:.2f}%".format(ap*100)
         """
@@ -677,7 +706,8 @@ with open(results_files_path + "/results.txt", 'w') as results_file:
         """
         rounded_prec = [ '%.2f' % elem for elem in prec ]
         rounded_rec = [ '%.2f' % elem for elem in rec ]
-        results_file.write(text + "\n Precision: " + str(rounded_prec) + "\n Recall :" + str(rounded_rec) + "\n\n")
+        results_file.write(text + "\n Precision: " + str(rounded_prec) + "\n Recall :" + str(rounded_rec) + "\n")
+        results_file.write(" Precision({}): ".format(CONF_THRES) + str(precision) + "\n Recall({}): ".format(CONF_THRES) + str(recall) + "\n\n")
         if not args.quiet:
             print(text)
         ap_dictionary[class_name] = ap
